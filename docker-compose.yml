@@ -1,0 +1,40 @@
+services:
+  snipeit-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: snipeit-mcp:latest
+    container_name: snipeit-mcp
+    env_file:
+      - .env
+    environment:
+      - MCP_TRANSPORT=http
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8080
+    healthcheck:
+      # No curl/wget in the deno image; `deno eval` is the available HTTP client.
+      # /health, NOT /mcp: /mcp answers 401 when the OAuth gate is on, so it
+      # cannot distinguish "up" from "rejecting everything".
+      test:
+        ["CMD", "deno", "eval", "const r = await fetch('http://127.0.0.1:8080/health'); if (!r.ok) Deno.exit(1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - services
+    labels:
+      - "traefik.enable=true"
+      # ${MCP_DOMAIN} comes from ./.env, which Compose loads for interpolation.
+      - "traefik.http.routers.snipeit-mcp.rule=Host(`snipeit-mcp.${MCP_DOMAIN:?MCP_DOMAIN must be set in .env}`)"
+      - "traefik.http.routers.snipeit-mcp.tls.certresolver=letsencrypt"
+      - "traefik.http.services.snipeit-mcp.loadbalancer.server.port=8080"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+networks:
+  services:
+    external: true
